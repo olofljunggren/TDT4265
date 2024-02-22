@@ -13,8 +13,14 @@ def pre_process_images(X: np.ndarray):
         X: images of shape [batch size, 785] normalized as described in task2a
     """
     assert X.shape[1] == 784, f"X.shape[1]: {X.shape[1]}, should be 784"
-    # TODO implement this function (Task 2a)
-    return X
+    
+    # Hardcoded mean and std
+    mean = 33.55274553571429
+    std = 78.87550070784701
+
+    normalized = (X - mean) / std
+    normalized_biased = np.block([ normalized, np.ones([normalized.shape[0],1]) ])
+    return normalized_biased
 
 
 def cross_entropy_loss(targets: np.ndarray, outputs: np.ndarray):
@@ -25,11 +31,11 @@ def cross_entropy_loss(targets: np.ndarray, outputs: np.ndarray):
     Returns:
         Cross entropy error (float)
     """
-    assert (
-        targets.shape == outputs.shape
-    ), f"Targets shape: {targets.shape}, outputs: {outputs.shape}"
-    # TODO: Implement this function (copy from last assignment)
-    raise NotImplementedError
+    assert targets.shape == outputs.shape,\
+        f"Targets shape: {targets.shape}, outputs: {outputs.shape}"
+    
+    cost = -np.sum(np.sum(targets*np.log(outputs)))/(targets.shape[0])
+    return cost
 
 
 class SoftmaxModel:
@@ -46,7 +52,7 @@ class SoftmaxModel:
             1
         )  # Always reset random seed before weight init to get comparable results.
         # Define number of input nodes
-        self.I = None
+        self.I = 785
         self.use_improved_sigmoid = use_improved_sigmoid
         self.use_relu = use_relu
         self.use_improved_weight_init = use_improved_weight_init
@@ -67,6 +73,22 @@ class SoftmaxModel:
             prev = size
         self.grads = [None for i in range(len(self.ws))]
 
+        # Initialize intermediate activation output
+        self.hidden_layer_output = []
+
+        # Weight initialization:
+        if use_improved_weight_init:
+            for index, weight in enumerate(self.ws):
+                h = weight.shape[0]
+                w = weight.shape[1]
+                self.ws[index] = np.random.normal(0, 1/np.sqrt(h), (h,w))
+        else:
+            for index, weight in enumerate(self.ws):
+                h = weight.shape[0]
+                w = weight.shape[1]
+                self.ws[index] =  np.random.uniform(-1, 1, (h, w))
+
+
     def forward(self, X: np.ndarray) -> np.ndarray:
         """
         Args:
@@ -74,10 +96,24 @@ class SoftmaxModel:
         Returns:
             y: output of model with shape [batch size, num_outputs]
         """
-        # TODO implement this function (Task 2b)
-        # HINT: For performing the backward pass, you can save intermediate activations in variables in the forward pass.
-        # such as self.hidden_layer_output = ...
-        return None
+        a = X
+        self.hidden_layer_output = []
+        self.hidden_layer_output.append(a)
+        for index, weight in enumerate(self.ws): 
+            z = a @ weight
+            if index == len(self.ws)-1:
+                continue
+            if self.use_improved_sigmoid:
+                a = 1.7159*np.tanh((2.0/3.0)*z)
+            else:
+                a = np.array(1 / (1 + np.exp(-z)))
+            self.hidden_layer_output.append(a)
+
+        expz = np.exp(z)
+        normalization = np.tile(np.sum(expz,axis=1), (expz.shape[1],1)).T
+        y = expz/(normalization)
+
+        return y
 
     def backward(self, X: np.ndarray, outputs: np.ndarray, targets: np.ndarray) -> None:
         """
@@ -87,14 +123,32 @@ class SoftmaxModel:
             X: images of shape [batch size, 785]
             outputs: outputs of model of shape: [batch size, num_outputs]
             targets: labels/targets of each image of shape: [batch size, num_classes]
-        """
-        # TODO implement this function (Task 2b)
+        """     
+        batch_size = X.shape[0]
+        prev_delta = outputs - targets
+        for i in range(len(self.ws)-1,-1,-1):
+            if i == len(self.ws)-1:
+                a = np.array(self.hidden_layer_output[i])
+                self.grads[i] = a.T @ prev_delta / batch_size
+                continue
+
+            a = np.array(self.hidden_layer_output[i])
+            a_next = np.array(self.hidden_layer_output[i+1])
+            a_derivative = 0
+            if self.use_improved_sigmoid:
+                a_derivative =  2/3*(1.7159 - (1/1.7159)*(a_next**2))   # d/dz( 1.7159*tanh(2/3*z) ) = d/dz( a ) = 2/3*(1.7159 - 1.7159*tanh(2/3*z)**2) = 2/3*(1.7159 - (1/1.7159)*(a**2))
+            else:
+                a_derivative = a_next*(1-a_next)
+            
+            new_delta = prev_delta @ self.ws[i+1].T * a_derivative
+            self.grads[i] = a.T @ new_delta / (targets.shape[0])
+            prev_delta = new_delta
+
         assert (
             targets.shape == outputs.shape
         ), f"Output shape: {outputs.shape}, targets: {targets.shape}"
-        # A list of gradients.
+
         # For example, self.grads[0] will be the gradient for the first hidden layer
-        self.grads = []
         for grad, w in zip(self.grads, self.ws):
             assert (
                 grad.shape == w.shape
@@ -112,8 +166,12 @@ def one_hot_encode(Y: np.ndarray, num_classes: int):
     Returns:
         Y: shape [Num examples, num classes]
     """
-    # TODO: Implement this function (copy from last assignment)
-    raise NotImplementedError
+    output = np.zeros([Y.shape[0],num_classes])
+    for index, label in enumerate(Y):
+        hot_vector = np.zeros([1, num_classes])
+        hot_vector[0,label] = 1
+        output[index,:] = hot_vector
+    return output
 
 
 def gradient_approximation_test(model: SoftmaxModel, X: np.ndarray, Y: np.ndarray):
@@ -135,7 +193,7 @@ def gradient_approximation_test(model: SoftmaxModel, X: np.ndarray, Y: np.ndarra
                 logits = model.forward(X)
                 cost1 = cross_entropy_loss(Y, logits)
                 model.ws[layer_idx][i, j] = orig - epsilon
-                logits = model.forward(X)
+                logits = model.forward(X)  
                 cost2 = cross_entropy_loss(Y, logits)
                 gradient_approximation = (cost1 - cost2) / (2 * epsilon)
                 model.ws[layer_idx][i, j] = orig

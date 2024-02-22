@@ -18,8 +18,16 @@ def calculate_accuracy(
     Returns:
         Accuracy (float)
     """
-    # TODO: Implement this function (copy from last assignment)
-    accuracy = 0
+    softmax = model.forward(X)
+    estimates = np.argmax(softmax,axis=1)
+    correct = 0
+    total = len(estimates)
+
+    for index, target in enumerate(targets):
+        if target[estimates[index]] == 1:
+            correct += 1
+
+    accuracy = correct/total
     return accuracy
 
 
@@ -51,8 +59,16 @@ class SoftmaxTrainer(BaseTrainer):
         Returns:
             loss value (float) on batch
         """
-        # TODO: Implement this function (task 2c)
-        loss = 0
+        
+        estimate = self.model.forward(X_batch)
+        self.model.backward(X_batch, estimate, Y_batch)
+        for i in range(len(self.model.ws)):
+            if self.use_momentum:
+                self.previous_grads[i] = self.model.grads[i] + self.momentum_gamma*self.previous_grads[i]
+                self.model.ws[i] = self.model.ws[i] - self.learning_rate*self.previous_grads[i]
+            else:
+                self.model.ws[i] = self.model.ws[i] - self.learning_rate*self.model.grads[i]
+        loss = cross_entropy_loss(Y_batch, estimate)
 
         return loss
 
@@ -87,9 +103,12 @@ def main():
     shuffle_data = True
 
     # Settings for task 2 and 3. Keep all to false for task 2.
-    use_improved_sigmoid = False
-    use_improved_weight_init = False
-    use_momentum = False
+    use_improved_sigmoid = True
+    use_improved_weight_init = True
+    
+    # Changed learning rate for momentum in 3c
+    learning_rate = 0.02
+    use_momentum = True
     use_relu = False
 
     # Load dataset
@@ -115,6 +134,7 @@ def main():
         X_val,
         Y_val,
     )
+
     train_history, val_history = trainer.train(num_epochs)
 
     print(
@@ -145,7 +165,7 @@ def main():
     plt.xlabel("Number of Training Steps")
     plt.ylabel("Accuracy")
     plt.legend()
-    plt.savefig("task2c_train_loss.png")
+    #plt.savefig("task2c_train_loss.png")
     plt.show()
 
 

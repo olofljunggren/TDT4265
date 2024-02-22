@@ -73,7 +73,7 @@ class BaseTrainer:
         )
 
         validation_step = 0
-        minimum_loss = 100000
+        minimum_loss = 10000000
         global_step = 0
         for epoch in range(num_epochs):
             train_loader = utils.batch_loader(

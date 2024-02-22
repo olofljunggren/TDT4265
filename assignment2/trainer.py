@@ -72,6 +72,8 @@ class BaseTrainer:
             accuracy={}
         )
 
+        validation_step = 0
+        minimum_loss = 10000000
         global_step = 0
         for epoch in range(num_epochs):
             train_loader = utils.batch_loader(
@@ -87,6 +89,16 @@ class BaseTrainer:
                     train_history["accuracy"][global_step] = accuracy_train
                     val_history["loss"][global_step] = val_loss
                     val_history["accuracy"][global_step] = accuracy_val
-                    # TODO: Implement early stopping (copy from last assignment)
+
+                    # Early stop implementation 
+                    if val_loss >= minimum_loss:
+                        validation_step += 1
+                    else:
+                        minimum_loss = val_loss
+                        validation_step = 0
+                    
+                    if validation_step >= 50:
+                        print("Epoch:", epoch)
+                        return train_history, val_history
                 global_step += 1
         return train_history, val_history
